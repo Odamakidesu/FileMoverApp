@@ -1,0 +1,22 @@
+# PyInstallerによるビルド生成物
+dist/
+build/
+__pycache__/
+*.spec
+
+# 認証系・秘密鍵
+credentials.json
+token.pickle
+
+# ローカル設定ファイル
+config_local.json
+debug_log.txt
+error.log
+
+# VSCodeなどIDEのメタファイル
+.vscode/
+*.code-workspace
+
+# その他OS依存
+.DS_Store
+Thumbs.db
