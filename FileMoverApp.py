@@ -312,9 +312,6 @@ class FileMoverApp(ctk.CTk):
 
         # 保存先サブフォルダ名取得
         subfolder = self.subfolder_entry.get().strip()
-        if not subfolder:
-            messagebox.showwarning("未入力", "展開先フォルダ名を入力してください。")
-            return
 
         # 所定の親ディレクトリ
         base_root = self.base_root
