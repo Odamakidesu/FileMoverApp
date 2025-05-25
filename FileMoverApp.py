@@ -96,7 +96,7 @@ class FileMoverApp(ctk.CTk):
         super().__init__()
         # 初期表示時
         self.base_root = load_base_root()
-        self.title("ファイル転送ツール")
+        self.title("File Mover App")
         self.geometry("400x650")
 
         self.file_paths = []
