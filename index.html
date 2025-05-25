@@ -1,14 +1,52 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>File Mover App</title>
+    <title>File Mover App - Home</title>
   </head>
   <body>
     <h1>File Mover App</h1>
     <p>
-      このアプリは、選択したファイルを別フォルダへ移動またはコピーするためのツールです。
+      This application is a desktop tool that helps you automatically organize,
+      copy, or move selected files based on your Google Calendar events.
     </p>
-    <p><a href="PRIVACY_POLICY.html">プライバシーポリシーを見る</a></p>
+
+    <h2>Main Features</h2>
+    <ul>
+      <li>Fetch events from your Google Calendar</li>
+      <li>Automatically organize and move local files based on event names</li>
+      <li>Use token.pickle for credential persistence</li>
+      <li>User-friendly graphical interface built with CustomTkinter</li>
+    </ul>
+
+    <h2>Google OAuth Scope Used</h2>
+    <p><code>https://www.googleapis.com/auth/calendar.readonly</code></p>
+
+    <h2>App Screenshots</h2>
+    <p>Below are screenshots of the app in use and the OAuth consent screen.</p>
+
+    <h3>1. OAuth Consent Screen</h3>
+    <img
+      src="screenshots/oauth_consent.png"
+      alt="OAuth Consent Screen"
+      width="600"
+    />
+
+    <h3>2. Main Application Interface</h3>
+    <img src="screenshots/app_ui.png" alt="App UI" width="600" />
+
+    <h2>About the Developer</h2>
+    <p>
+      This application is developed and maintained by odamakidesu. The source
+      code is publicly available on GitHub.
+    </p>
+    <p>
+      <a href="https://github.com/odamakidesu/FileMoverApp" target="_blank"
+        >View GitHub Repository</a
+      >
+    </p>
+
+    <h2>Other Links</h2>
+    <p><a href="PRIVACY_POLICY.html">View Privacy Policy</a></p>
   </body>
 </html>

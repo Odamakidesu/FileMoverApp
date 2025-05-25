@@ -1,20 +1,32 @@
 import json
 import os
+import sys
 from pathlib import Path
 
-# デフォルトの保存先
-BASE_ROOT_DEFAULT = str(Path.home() / "Pictures" )
-BASE_CONFIG_FILE = "config_local.json"
+def get_base_dir() -> Path:
+    if getattr(sys, 'frozen', False):
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parent
+
+BASE_DIR = get_base_dir()
+
+def get_resource_path(filename: str) -> Path:
+    return BASE_DIR / filename
+
+# 各種パス定数
+TOKEN_PATH = get_resource_path("token.pickle")
+CREDENTIAL_PATH = get_resource_path("credentials.json")
+AUTH_COMPLETE_HTML_PATH = get_resource_path("auth_complete.html")
 KEYWORDS_FILE = "config_keywords.json"
+BASE_CONFIG_FILE = "config_local.json"
+BASE_ROOT_DEFAULT = str(Path.home() / "Pictures")
 
-# Google API スコープ
-SCOPES = [
-    "https://www.googleapis.com/auth/calendar.readonly",
-]
+SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
-# デフォルトのケモノ関連キーワード
 DEFAULT_KEYWORDS = [
-    "ケモ", "けも", "獣", "ふぁーすと", "kemocon", "OFFF", "もっふ", "モッフ", "モフ", "もふ", "JMoF" , "着ぐるみ", "きぐるみ", "fur", "666", "kemo", "kemono", "off", "オフ", "おふ", "撮影", "オオカミ", "ookami", "いぬ"
+    "ケモ", "けも", "獣", "ふぁーすと", "kemocon", "OFFF", "もっふ", "モッフ", "モフ", "もふ", "JMoF",
+    "着ぐるみ", "きぐるみ", "fur", "666", "kemo", "kemono", "off", "オフ", "おふ", "撮影", "オオカミ",
+    "ookami", "いぬ"
 ]
 
 def save_base_root(path):

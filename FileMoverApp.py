@@ -4,34 +4,33 @@ import os
 import zipfile
 import pickle
 import datetime
-import pathlib
 import sys
 import logging
 import threading
+import tempfile
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from tkinter import filedialog, messagebox
-from config import load_base_root, save_base_root
+from config import (
+    load_base_root,
+    save_base_root,
+    load_keywords,
+    save_keywords,
+    TOKEN_PATH,
+    CREDENTIAL_PATH,
+    AUTH_COMPLETE_HTML_PATH,
+    SCOPES,
+    DEFAULT_KEYWORDS,)
 from google.auth.transport.requests import Request
-
-BASE_DIR = pathlib.Path(__file__).resolve().parent
-CREDENTIAL_PATH = BASE_DIR / 'credentials.json'
-TOKEN_PATH = BASE_DIR / "token.pickle"
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 logging.basicConfig(filename="error.log", level=logging.ERROR)
 
-SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
-
-KEMONO_KEYWORDS = [
-    "ケモ", "けも", "獣", "ふぁーすと", "kemocon", "OFFF", "もっふ", "モッフ", "モフ", "もふ", "JMoF" , "着ぐるみ", "きぐるみ", "fur", "666", "kemo", "kemono", "off", "オフ", "おふ", "撮影", "オオカミ", "ookami", "いぬ"
-]
-
 def is_kemono_event(title: str, description: str = "") -> bool:
     combined = (title or "") + " " + (description or "")
     combined = combined.lower()
-    for keyword in KEMONO_KEYWORDS:
+    for keyword in DEFAULT_KEYWORDS:
         if keyword.lower() in combined:
             return True
     return False
@@ -42,10 +41,8 @@ def get_resource_path(filename: str) -> str:
 def get_kemono_events(max_results=250):
     creds = None
     try:
-        token_path = get_resource_path("token.pickle")
-        cred_path = get_resource_path("credentials.json")
-        if os.path.exists(token_path):
-            with open(token_path, 'rb') as token:
+        if os.path.exists(TOKEN_PATH):
+            with open(TOKEN_PATH, 'rb') as token:
                 creds = pickle.load(token)
 
         if not creds or not creds.valid:
@@ -53,9 +50,12 @@ def get_kemono_events(max_results=250):
                 if creds and creds.expired and creds.refresh_token:
                     creds.refresh(Request())
                 else:
-                    flow = InstalledAppFlow.from_client_secrets_file(cred_path, SCOPES)
-                    creds = flow.run_local_server(port=0, timeout_seconds=60)
-                with open(token_path, 'wb') as token:
+                    flow = InstalledAppFlow.from_client_secrets_file(CREDENTIAL_PATH, SCOPES)
+                    html_content = AUTH_COMPLETE_HTML_PATH.read_text(encoding="utf-8")
+                    print(f"[DEBUG] auth_complete.html path: {html_content}")
+                    creds = flow.run_local_server(port=0, timeout_seconds=60, success_html=html_content)
+                    
+                with open(TOKEN_PATH, 'wb') as token:
                     pickle.dump(creds, token)
             except Exception as e:
                 logging.error("Google認証エラー", exc_info=True)
@@ -245,10 +245,9 @@ class FileMoverApp(ctk.CTk):
         self.event_entry.insert(0, selected_event)
 
     def reset_google_token(self):
-        token_path = get_resource_path("token.pickle")
-        if os.path.exists(token_path):
+        if os.path.exists(TOKEN_PATH):
             # トークンリセット
-            os.remove(token_path)
+            os.remove(TOKEN_PATH)
 
             # イベント一覧（ドロップダウン）をクリア
             self.event_combo.set("")
@@ -357,8 +356,6 @@ class KeywordEditor(ctk.CTkToplevel):
         self.geometry("500x250")
         self.transient(master)  # ← メイン画面を背後に保つ
 
-        from config import load_keywords
-
         ctk.CTkLabel(self, text="キーワードをカンマ区切りで入力してください:").pack(pady=10)
 
         self.textbox = ctk.CTkTextbox(self, width=450, height=120)
@@ -368,7 +365,6 @@ class KeywordEditor(ctk.CTkToplevel):
         ctk.CTkButton(self, text="保存", command=self.save).pack(pady=10)
 
     def save(self):
-        from config import save_keywords
 
         raw = self.textbox.get("1.0", ctk.END)
         keywords = [k.strip() for k in raw.split(",") if k.strip()]

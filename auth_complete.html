@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>認証完了</title>
+    <script>
+      window.onload = function () {
+        setTimeout(() => {
+          window.open("", "_self"); // 一部ブラウザでwindow.close()が効かない対策
+          window.close(); // ウィンドウ自動で閉じる
+        }, 1000); // 1秒後に閉じる
+      };
+    </script>
+  </head>
+  <body>
+    <p>認証が完了しました。このウィンドウは自動で閉じます。</p>
+  </body>
+</html>
