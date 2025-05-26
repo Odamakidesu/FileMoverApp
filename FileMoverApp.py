@@ -8,6 +8,7 @@ import sys
 import logging
 import threading
 import tempfile
+import mimetypes
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from tkinter import filedialog, messagebox
@@ -90,6 +91,32 @@ def get_kemono_events(max_results=250):
     except Exception as e:
         logging.error("処理失敗", exc_info=True)
         messagebox.showerror("エラー", f"Google予定取得中にエラーが発生しました: {str(e)}")
+
+# zip解凍用ヘルパー関数
+def is_image(file_path):
+    mime, _ = mimetypes.guess_type(file_path)
+    return mime and mime.startswith("image")
+
+def find_image_dir(root_dir):
+    for dirpath, _, filenames in os.walk(root_dir):
+        if any(is_image(os.path.join(dirpath, f)) for f in filenames):
+            return dirpath
+    return None
+
+def extract_and_copy_images(zip_path, target_dir):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(temp_dir)
+        
+        image_dir = find_image_dir(temp_dir)
+        if image_dir is None:
+            raise FileNotFoundError("画像ファイルが見つかりませんでした。")
+
+        os.makedirs(target_dir, exist_ok=True)
+        for filename in os.listdir(image_dir):
+            src = os.path.join(image_dir, filename)
+            if os.path.isfile(src) and is_image(src):
+                shutil.copy2(src, os.path.join(target_dir, filename))
 
 class FileMoverApp(ctk.CTk):
     def __init__(self):
@@ -327,16 +354,7 @@ class FileMoverApp(ctk.CTk):
             try:
                 # zipファイルの場合：コピー → 展開 → 削除
                 if filename.lower().endswith(".zip"):
-                    shutil.copy2(path, dest_path)
-
-                    extract_dir = os.path.join(final_dest_dir, os.path.splitext(filename)[0])
-                    os.makedirs(extract_dir, exist_ok=True)
-
-                    with zipfile.ZipFile(dest_path, 'r') as zip_ref:
-                        zip_ref.extractall(extract_dir)
-
-                    os.remove(dest_path)  # ← ← zip「だけ」削除
-
+                    extract_and_copy_images(path, final_dest_dir)
                 else:
                     # 通常ファイルはコピーだけ
                     shutil.copy2(path, dest_path)
