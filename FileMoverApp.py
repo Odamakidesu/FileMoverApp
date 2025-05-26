@@ -52,7 +52,6 @@ def get_hit_keywords_events(max_results=250):
                 else:
                     flow = InstalledAppFlow.from_client_secrets_file(CREDENTIAL_PATH, SCOPES)
                     html_content = AUTH_COMPLETE_HTML_PATH.read_text(encoding="utf-8")
-                    print(f"[DEBUG] auth_complete.html path: {html_content}")
                     creds = flow.run_local_server(port=0, timeout_seconds=60, success_html=html_content)
                     
                 with open(TOKEN_PATH, 'wb') as token:
