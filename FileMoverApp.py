@@ -4,11 +4,11 @@ import os
 import zipfile
 import pickle
 import datetime
-import sys
 import logging
 import threading
 import tempfile
 import mimetypes
+import subprocess
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from tkinter import filedialog, messagebox
@@ -28,7 +28,8 @@ ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 logging.basicConfig(filename="error.log", level=logging.ERROR)
 
-def is_kemono_event(title: str, description: str = "") -> bool:
+# キーワードにヒットしているか判定
+def is_hit_keywords_event(title: str, description: str = "") -> bool:
     combined = (title or "") + " " + (description or "")
     combined = combined.lower()
     for keyword in DEFAULT_KEYWORDS:
@@ -36,10 +37,8 @@ def is_kemono_event(title: str, description: str = "") -> bool:
             return True
     return False
 
-def get_resource_path(filename: str) -> str:
-    return os.path.join(os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else __file__), filename)
-
-def get_kemono_events(max_results=250):
+# ヒットするイベントを取得
+def get_hit_keywords_events(max_results=250):
     creds = None
     try:
         if os.path.exists(TOKEN_PATH):
@@ -76,16 +75,16 @@ def get_kemono_events(max_results=250):
             orderBy='startTime'
         ).execute()
 
-        kemono_events = []
+        hit_keyword_events = []
         for event in events_result.get('items', []):
             title = event.get('summary', '')
             description = event.get('description', '')
-            if is_kemono_event(title, description):
+            if is_hit_keywords_event(title, description):
                 start = event['start'].get('dateTime', event['start'].get('date'))
                 dt = datetime.datetime.fromisoformat(start)
                 date_str = dt.strftime('%Y%m%d')
-                kemono_events.append(f'{date_str}_{title}')
-        return kemono_events
+                hit_keyword_events.append(f'{date_str}_{title}')
+        return hit_keyword_events
     except FileNotFoundError as e:
         messagebox.showerror("エラー", "必要なファイル（credentials.json や token.pickle）が見つかりません。")
     except Exception as e:
@@ -93,30 +92,45 @@ def get_kemono_events(max_results=250):
         messagebox.showerror("エラー", f"Google予定取得中にエラーが発生しました: {str(e)}")
 
 # zip解凍用ヘルパー関数
+# 画像ファイルの判定
 def is_image(file_path):
     mime, _ = mimetypes.guess_type(file_path)
     return mime and mime.startswith("image")
 
-def find_image_dir(root_dir):
-    for dirpath, _, filenames in os.walk(root_dir):
-        if any(is_image(os.path.join(dirpath, f)) for f in filenames):
-            return dirpath
-    return None
-
+# zipファイル解凍(Sjis→UTF-8変換)
 def extract_and_copy_images(zip_path, target_dir):
     with tempfile.TemporaryDirectory() as temp_dir:
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(temp_dir)
-        
-        image_dir = find_image_dir(temp_dir)
-        if image_dir is None:
-            raise FileNotFoundError("画像ファイルが見つかりませんでした。")
+        # 日本語が混ざると文字化けするので一旦7zで展開
+        cmd = [
+            os.path.join(os.getcwd(), "7za.exe"),
+            "x", f"-o{temp_dir}", zip_path, "-y"
+        ]
+        # 7zでzipファイルを展開
+        try:
+            subprocess.run(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+        except Exception as e:
+            messagebox.showerror("展開失敗", f"7zでZIPを展開できませんでした: {str(e)}")
+            return
 
-        os.makedirs(target_dir, exist_ok=True)
-        for filename in os.listdir(image_dir):
-            src = os.path.join(image_dir, filename)
-            if os.path.isfile(src) and is_image(src):
-                shutil.copy2(src, os.path.join(target_dir, filename))
+        for root, _, files in os.walk(temp_dir):
+            for file in files:
+                full_path = os.path.join(root, file)
+                if is_image(full_path):
+                    os.makedirs(target_dir, exist_ok=True)
+                    dest_path = os.path.join(target_dir, file)
+
+                    counter = 1
+                    base, ext = os.path.splitext(dest_path)
+                    while os.path.exists(dest_path):
+                        dest_path = f"{base}_{counter}{ext}"
+                        counter += 1
+
+                    shutil.copy2(full_path, dest_path)
 
 class FileMoverApp(ctk.CTk):
     def __init__(self):
@@ -187,12 +201,14 @@ class FileMoverApp(ctk.CTk):
     def select_files(self): pass
     def execute(self): pass
 
+    # 転送用のファイルを選択する
     def select_files(self):
         self.file_paths = filedialog.askopenfilenames(title="ファイルを選択")
         self.file_display.delete("1.0", ctk.END)
         for path in self.file_paths:
             self.file_display.insert(ctk.END, f"{path}\n")
     
+    # 保存先の親フォルダを選択
     def select_base_root(self):
         selected = filedialog.askdirectory(title="保存先の親フォルダを選択", initialdir=self.base_root)
         if selected:
@@ -200,6 +216,7 @@ class FileMoverApp(ctk.CTk):
             self.base_dir_display.configure(text=f"保存先の親フォルダ: {selected}")
             save_base_root(selected)
     
+    # zipファイルを展開
     def extract_zip_smart(self, zip_path, output_base_dir):
         zip_name = os.path.splitext(os.path.basename(zip_path))[0]
         extract_dir = os.path.join(output_base_dir, zip_name)
@@ -234,9 +251,10 @@ class FileMoverApp(ctk.CTk):
         shutil.rmtree(temp_dir)
         print(f"[展開完了] {zip_path} → {extract_dir}")
 
+    # イベント名を自動入力
     def autofill_event_name(self):
         try:
-            name = get_kemono_events()
+            name = get_hit_keywords_events()
             if name:
                 self.event_entry.delete(0, ctk.END)
                 self.event_entry.insert(0, name)
@@ -247,13 +265,15 @@ class FileMoverApp(ctk.CTk):
             logging.error("処理失敗", exc_info=True)
             messagebox.showerror("エラー", f"カレンダー取得に失敗しました: {str(e)}")
 
+    # Googleカレンダーから予定を取得
     def fetch_events_list(self):
         self.status_label.configure(text="Googleカレンダーから予定を取得中…")
         threading.Thread(target=self._fetch_events_background, daemon=True).start()
 
+    # Googleアカウント認証と予定取得
     def _fetch_events_background(self):
         try:
-            events = get_kemono_events()
+            events = get_hit_keywords_events()
             if events:
                 self.event_combo.configure(values=events)
                 self.event_combo.set(events[-1])
@@ -267,10 +287,12 @@ class FileMoverApp(ctk.CTk):
             logging.error("Google予定取得失敗", exc_info=True)
             messagebox.showerror("取得エラー", f"Google予定取得時にエラー: {str(e)}")
 
+    # イベント名入力
     def set_event_entry(self, selected_event):
         self.event_entry.delete(0, ctk.END)
         self.event_entry.insert(0, selected_event)
 
+    # Googleアカウントのトークンをリセット
     def reset_google_token(self):
         if os.path.exists(TOKEN_PATH):
             # トークンリセット
@@ -290,38 +312,7 @@ class FileMoverApp(ctk.CTk):
         else:
             messagebox.showinfo("情報なし", "認証トークンが見つかりませんでした。")
 
-    def on_fetch_events_clicked(self):
-        self.status_label.configure(text="Googleカレンダーから予定を取得中…")
-        threading.Thread(target=self.fetch_events_thread).start()
-
-    def fetch_events_thread(self):
-        try:
-            timeout_flag = {"triggered": False}
-
-            def timeout():
-                timeout_flag["triggered"] = True
-                self.status_label.configure(text="認証タイムアウト・失敗しました")
-                messagebox.showerror("エラー", "Google認証がタイムアウトしました。")
-
-            # タイマーを60秒でスタート
-            timer = threading.Timer(60, timeout)
-            timer.start()
-
-            events = get_kemono_events()  # 認証含む処理
-
-            timer.cancel()  # 成功したらタイマー止める
-
-            if timeout_flag["triggered"]:
-                return
-            if events is None:
-                self.status_label.configure(text="取得失敗")
-                return
-            self.event_combo.configure(values=events)
-            self.status_label.configure(text=f"予定を {len(events)} 件取得")
-        except Exception as e:
-            self.status_label.configure(text="取得中にエラー")
-            messagebox.showerror("取得エラー", f"Google予定取得時にエラー: {str(e)}")
-
+    # キーワード編集画面展開
     def open_keyword_editor(self):
         KeywordEditor(self)
 
@@ -367,6 +358,7 @@ class FileMoverApp(ctk.CTk):
 
         messagebox.showinfo("完了", f"すべてのファイルを「{final_dest_dir}」に処理しました。")
 
+# キーワード編集画面クラス
 class KeywordEditor(ctk.CTkToplevel):
     def __init__(self, master=None):
         super().__init__(master)
@@ -376,12 +368,14 @@ class KeywordEditor(ctk.CTkToplevel):
 
         ctk.CTkLabel(self, text="キーワードをカンマ区切りで入力してください:").pack(pady=10)
 
+        # キーワード入力用のテキストボックス表示
         self.textbox = ctk.CTkTextbox(self, width=450, height=120)
         self.textbox.pack(pady=5)
         self.textbox.insert("1.0", ", ".join(load_keywords()))
 
         ctk.CTkButton(self, text="保存", command=self.save).pack(pady=10)
 
+    # キーワードのロードと保存
     def save(self):
 
         raw = self.textbox.get("1.0", ctk.END)
