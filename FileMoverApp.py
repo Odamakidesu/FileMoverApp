@@ -7,23 +7,27 @@ import datetime
 import logging
 import threading
 import tempfile
-import mimetypes
+import re
 import subprocess
+import string
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, Text
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from config import (
     load_base_root,
     save_base_root,
     load_keywords,
     save_keywords,
+    load_event_format,
+    save_event_format,
     TOKEN_PATH,
-    CREDENTIAL_ENC_PATH,
+    SUPPORTED_IMAGE_EXTENSIONS,
     CREDENTIAL_JSON_PATH,
     # AUTH_COMPLETE_HTML_PATH,
     SCOPES,
-    DEFAULT_KEYWORDS,)
+    DEFAULT_KEYWORDS,
+    KEYWORDS_FILE,)
 from google.auth.transport.requests import Request
 from decrypt_utils import decrypt_credentials
 
@@ -33,9 +37,10 @@ logging.basicConfig(filename="error.log", level=logging.ERROR)
 
 # キーワードにヒットしているか判定
 def is_hit_keywords_event(title: str, description: str = "") -> bool:
+    keywords = load_keywords()
     combined = (title or "") + " " + (description or "")
     combined = combined.lower()
-    for keyword in DEFAULT_KEYWORDS:
+    for keyword in keywords:
         if keyword.lower() in combined:
             return True
     return False
@@ -84,14 +89,28 @@ def get_hit_keywords_events(max_results=250):
         ).execute()
 
         hit_keyword_events = []
+        fmt = load_event_format()
         for event in events_result.get('items', []):
             title = event.get('summary', '')
             description = event.get('description', '')
             if is_hit_keywords_event(title, description):
                 start = event['start'].get('dateTime', event['start'].get('date'))
                 dt = datetime.datetime.fromisoformat(start)
-                date_str = dt.strftime('%Y%m%d')
-                hit_keyword_events.append(f'{date_str}_{title}')
+
+                # --- 日付フォーマット置換ロジック ---
+                def format_with_date(fmt: str, dt: datetime.datetime) -> str:
+                    match = re.search(r"\{date:([^}]+)\}", fmt)
+                    if match:
+                        date_fmt = match.group(1)
+                        formatted_date = dt.strftime(date_fmt)
+                        fmt = fmt.replace(match.group(0), formatted_date)
+                    else:
+                        # デフォルト形式
+                        fmt = fmt.replace("{date}", dt.strftime("%Y%m%d"))
+                    return fmt.replace("{event}", title)
+
+                formatted = format_with_date(fmt, dt)
+                hit_keyword_events.append(formatted)
         return hit_keyword_events
     except FileNotFoundError as e:
         messagebox.showerror("エラー", "必要なファイル（credentials.json や token.pickle）が見つかりません。")
@@ -102,8 +121,8 @@ def get_hit_keywords_events(max_results=250):
 # zip解凍用ヘルパー関数
 # 画像ファイルの判定
 def is_image(file_path):
-    mime, _ = mimetypes.guess_type(file_path)
-    return mime and mime.startswith("image")
+    ext = os.path.splitext(file_path)[1].lower()
+    return ext in SUPPORTED_IMAGE_EXTENSIONS
 
 # zipファイル解凍(Sjis→UTF-8変換)
 def extract_and_copy_images(zip_path, target_dir):
@@ -140,6 +159,31 @@ def extract_and_copy_images(zip_path, target_dir):
 
                     shutil.copy2(full_path, dest_path)
 
+# フォーマットの妥当性を検証
+def validate_format(format_str: str) -> bool:
+    # 無効なプレースホルダ検出（{未閉じ}, {空}, 変数名に使えない文字など）
+    invalid_chars = r'[\/:*?"<>|]'
+    if re.findall(invalid_chars, format_str):
+        return False
+
+        # プレースホルダ抽出: str.formatの構文に従う
+    try:
+        formatter = string.Formatter()
+        fields = [field_name for _, field_name, _, _ in formatter.parse(format_str) if field_name]
+    except ValueError:
+        return False  # フォーマット構文エラー（例：未閉じの{}など）
+
+    # 必須の置換子チェック
+    if not any(tag in format_str for tag in ("{event}", "{date}")):
+        return False
+
+    # 不正なフィールド名（Pythonの識別子 + strftime指定子許可）
+    for f in fields:
+        if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*(?::[^{}]*)?", f):
+            return False
+
+    return True
+
 class FileMoverApp(TkinterDnD.Tk):
     def __init__(self):
         super().__init__()
@@ -161,9 +205,15 @@ class FileMoverApp(TkinterDnD.Tk):
         self.base_dir_display = ctk.CTkLabel(self, text=f"保存先の親フォルダ: {self.base_root}", text_color="gray")
         self.base_dir_display.pack(anchor="w", padx=20, pady=(0, 10))
         
+        button_width = 180
+        self.edit_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.edit_frame.pack(pady=2)
         # キーワード編集画面
-        self.keyword_edit_button = ctk.CTkButton(self, text="キーワード編集", command=self.open_keyword_editor)
-        self.keyword_edit_button.pack(pady=5)
+        self.keyword_edit_button = ctk.CTkButton(self.edit_frame, text="キーワード編集", width=button_width, command=self.open_keyword_editor)
+        self.keyword_edit_button.pack(side="left", padx=5)
+
+        self.format_edit_button = ctk.CTkButton(self.edit_frame, text="フォーマット編集", width=button_width, command=self.open_format_editor)
+        self.format_edit_button.pack(side="left", padx=5)
 
         # Google Calender認証
         self.event_label = ctk.CTkLabel(self, text="イベント情報")
@@ -171,11 +221,12 @@ class FileMoverApp(TkinterDnD.Tk):
 
         self.google_buttons_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.google_buttons_frame.pack(pady=2)
-        self.google_reset = ctk.CTkButton(self.google_buttons_frame, text="Googleアカウント切り替え", command=self.reset_google_token)
+        self.google_reset = ctk.CTkButton(self.google_buttons_frame, text="Googleアカウント変更", width=button_width, command=self.reset_google_token)
         self.google_reset.pack(side="left", padx=5)
-        self.google_fetch = ctk.CTkButton(self.google_buttons_frame, text="予定一覧を取得", command=self.fetch_events_list)
+        self.google_fetch = ctk.CTkButton(self.google_buttons_frame, text="予定一覧を取得", width=button_width, command=self.fetch_events_list)
         self.google_fetch.pack(side="left", padx=5)
-        self.event_combo = ctk.CTkComboBox(self, values=[], width=300, command=self.set_event_entry)
+        self.event_combo = ctk.CTkComboBox(self, values=[], width=400, command=self.set_event_entry)
+        self.event_combo.set("")
         self.event_combo.pack(padx=20, pady=5)
 
         # ========= 手動入力セクション =========
@@ -194,8 +245,21 @@ class FileMoverApp(TkinterDnD.Tk):
         self.file_button = ctk.CTkButton(self, text="ファイル選択", command=self.select_files)
         self.file_button.pack(pady=5)
 
-        self.file_display = ctk.CTkTextbox(self, height=120)
+        self.file_display = Text(
+            self,
+            height=7,
+            background="#F1F1F1",
+            foreground="#333333",
+            relief="flat",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground="#A0A0A0",
+            font=("Segoe UI", 11)
+        )
         self.file_display.pack(padx=20, pady=5, fill="both")
+
+        self.file_display.drop_target_register(DND_FILES)
+        self.file_display.dnd_bind('<<Drop>>', self.on_drop)
 
         self.file_display.drop_target_register(DND_FILES)
         self.after(200, lambda: self.file_display.dnd_bind('<<Drop>>', self.on_drop))
@@ -214,7 +278,25 @@ class FileMoverApp(TkinterDnD.Tk):
 
     # 転送用のファイルを選択する
     def select_files(self):
-        self.file_paths = filedialog.askopenfilenames(title="ファイルを選択")
+        paths = filedialog.askopenfilenames(title="ファイルを選択")
+        for path in paths:
+            if path not in self.file_paths:
+                self.file_paths.append(path)
+
+        # 表示更新
+        self.file_display.delete("1.0", ctk.END)
+        for path in self.file_paths:
+            self.file_display.insert(ctk.END, f"{path}\n")
+
+    # ドラッグ＆ドロップでファイルを受け取る
+    def on_drop(self, event):
+        dropped = self.tk.splitlist(event.data)
+        for path in dropped:
+            path = path.strip("{").strip("}")
+            if path not in self.file_paths:
+                self.file_paths.append(path)
+
+        # 表示更新
         self.file_display.delete("1.0", ctk.END)
         for path in self.file_paths:
             self.file_display.insert(ctk.END, f"{path}\n")
@@ -326,13 +408,10 @@ class FileMoverApp(TkinterDnD.Tk):
     # キーワード編集画面展開
     def open_keyword_editor(self):
         KeywordEditor(self)
-    
-    def on_drop(self, event):
-        dropped_files = self.tk.splitlist(event.data)
-        for path in dropped_files:
-            if os.path.exists(path):
-                self.file_paths.append(path)
-                self.file_display.insert(ctk.END, f"{path}\n")
+        
+    # キーワード編集画面展開
+    def open_format_editor(self):
+        FormatEditor(self)
 
     def execute(self):
         if not self.file_paths:
@@ -342,8 +421,9 @@ class FileMoverApp(TkinterDnD.Tk):
         # イベント名取得
         event_name = self.event_entry.get().strip()
         if not event_name:
-            messagebox.showwarning("未入力", "イベント名を入力してください。")
-            return
+            proceed = messagebox.askyesno("未入力確認", "イベント名が未入力です。\nこのまま続行しますか？")
+            if not proceed:
+                return
 
         # 保存先サブフォルダ名取得
         subfolder = self.subfolder_entry.get().strip()
@@ -375,6 +455,9 @@ class FileMoverApp(TkinterDnD.Tk):
                 return
 
         messagebox.showinfo("完了", f"すべてのファイルを「{final_dest_dir}」に処理しました。")
+        # ✅ 成功時に file_paths をクリアして Text欄もリセット
+        self.file_paths.clear()
+        self.file_display.delete("1.0", ctk.END)
 
 # キーワード編集画面クラス
 class KeywordEditor(ctk.CTkToplevel):
@@ -401,6 +484,45 @@ class KeywordEditor(ctk.CTkToplevel):
         save_keywords(keywords)
         messagebox.showinfo("保存完了", "キーワードを保存しました。")
         self.destroy()
+
+# イベントフォーマット編集画面クラス
+class FormatEditor(ctk.CTkToplevel):
+    def __init__(self, master=None):
+        super().__init__(master)
+        self.title("イベントフォーマット編集")
+        self.geometry("400x250")
+        self.transient(master)
+        info_text = (
+            "フォーマットで使用可能な変数:\n"
+            "{date} または {date:<strftime形式>} - 予定の日付\n"
+            "{event} - イベント名\n\n"
+            "日付フォーマットの例:\n"
+            '例: "{date:%Y-%m-%d}_{event}" → "2025-05-29_撮影会"'
+        )
+        info_box = ctk.CTkTextbox(self, height=120, width=460, wrap="word")
+        info_box.insert("1.0", info_text)
+        info_box.configure(state="disabled", border_width=0, fg_color="transparent")
+        info_box.pack(pady=(10, 5))
+        self.entry = ctk.CTkEntry(self)
+        self.entry.pack(pady=5, padx=10, fill="x")
+
+        self.entry.insert(0, load_event_format())
+
+        save_button = ctk.CTkButton(self, text="保存", command=self.save_format)
+        save_button.pack(pady=10)
+
+    def save_format(self):
+        format_str = self.entry.get().strip()
+        if not validate_format(format_str):
+            messagebox.showerror("フォーマットエラー", "有効な {event} または {date} が含まれていないか、構文エラーがあります。")
+            return
+        format_str = self.entry.get().strip()
+        if format_str:
+            save_event_format(format_str)
+            messagebox.showinfo("保存完了", "フォーマットを保存しました。")
+        self.destroy()
+
+
 
 if __name__ == "__main__":
     app = FileMoverApp()

@@ -22,14 +22,20 @@ CREDENTIAL_JSON_PATH = get_resource_path("credentials.json")
 # AUTH_COMPLETE_HTML_PATH = get_resource_path("auth_complete.html")
 KEYWORDS_FILE = get_resource_path("config_keywords.json")
 BASE_CONFIG_FILE = get_resource_path("config_local.json")
-BASE_ROOT_DEFAULT = str(Path.home() / "Pictures")
+EVENT_FORMAT_FILE = get_resource_path("config_event_format.json")
+DEFAULT_EVENT_FORMAT = "{date}_{event}"
 
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
+BASE_ROOT_DEFAULT = str(Path.home() / "Pictures")
 DEFAULT_KEYWORDS = [
     "ケモ", "けも", "獣", "ふぁーすと", "kemocon", "OFFF", "もっふ", "モッフ", "モフ", "もふ", "JMoF",
     "着ぐるみ", "きぐるみ", "fur", "666", "kemo", "kemono", "off", "オフ", "おふ", "撮影", "オオカミ",
     "ookami", "いぬ"
+]
+SUPPORTED_IMAGE_EXTENSIONS = [
+    ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tif", ".tiff", ".svg",
+    ".cr2", ".nef", ".arw", ".dng", ".rw2", ".orf", ".heic"
 ]
 
 def save_base_root(path):
@@ -61,3 +67,17 @@ def load_keywords():
     return DEFAULT_KEYWORDS
 
 KEYWORDS = load_keywords()
+
+def save_event_format(format_str):
+    with open(EVENT_FORMAT_FILE, "w", encoding="utf-8") as f:
+        json.dump({"format": format_str}, f, indent=2, ensure_ascii=False)
+
+def load_event_format():
+    if os.path.exists(EVENT_FORMAT_FILE):
+        try:
+            with open(EVENT_FORMAT_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("format", DEFAULT_EVENT_FORMAT)
+        except Exception:
+            return DEFAULT_EVENT_FORMAT
+    return DEFAULT_EVENT_FORMAT

@@ -3,7 +3,7 @@ dist/
 build/
 __pycache__/
 *.spec
-distribute/
+FileMoverApp/
 encrypted_credentials/
 *.zip
 
@@ -15,6 +15,7 @@ token.pickle
 config_local.json
 debug_log.txt
 error.log
+build_distribute.bat
 
 # VSCodeなどIDEのメタファイル
 .vscode/
