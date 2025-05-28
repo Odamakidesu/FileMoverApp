@@ -4,6 +4,7 @@ build/
 __pycache__/
 *.spec
 distribute/
+encrypted_credentials/
 *.zip
 
 # 認証系・秘密鍵

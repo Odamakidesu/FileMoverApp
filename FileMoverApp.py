@@ -19,11 +19,13 @@ from config import (
     load_keywords,
     save_keywords,
     TOKEN_PATH,
-    CREDENTIAL_PATH,
+    CREDENTIAL_ENC_PATH,
+    CREDENTIAL_JSON_PATH,
     # AUTH_COMPLETE_HTML_PATH,
     SCOPES,
     DEFAULT_KEYWORDS,)
 from google.auth.transport.requests import Request
+from decrypt_utils import decrypt_credentials
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -51,7 +53,8 @@ def get_hit_keywords_events(max_results=250):
                 if creds and creds.expired and creds.refresh_token:
                     creds.refresh(Request())
                 else:
-                    flow = InstalledAppFlow.from_client_secrets_file(CREDENTIAL_PATH, SCOPES)
+                    decrypt_credentials()
+                    flow = InstalledAppFlow.from_client_secrets_file(CREDENTIAL_JSON_PATH, SCOPES)
                     # html_content = AUTH_COMPLETE_HTML_PATH.read_text(encoding="utf-8")
                     creds = flow.run_local_server(port=0, timeout_seconds=60)
                     
