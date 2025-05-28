@@ -5,20 +5,22 @@ from pathlib import Path
 
 def get_base_dir() -> Path:
     if getattr(sys, 'frozen', False):
-        return Path(sys._MEIPASS)
+        return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent
 
 BASE_DIR = get_base_dir()
+RUNTIME_DIR = BASE_DIR / "runtime"
+RUNTIME_DIR.mkdir(exist_ok=True)
 
 def get_resource_path(filename: str) -> Path:
-    return BASE_DIR / filename
+    return RUNTIME_DIR / filename
 
 # 各種パス定数
 TOKEN_PATH = get_resource_path("token.pickle")
 CREDENTIAL_PATH = get_resource_path("credentials.json")
-AUTH_COMPLETE_HTML_PATH = get_resource_path("auth_complete.html")
-KEYWORDS_FILE = "config_keywords.json"
-BASE_CONFIG_FILE = "config_local.json"
+# AUTH_COMPLETE_HTML_PATH = get_resource_path("auth_complete.html")
+KEYWORDS_FILE = get_resource_path("config_keywords.json")
+BASE_CONFIG_FILE = get_resource_path("config_local.json")
 BASE_ROOT_DEFAULT = str(Path.home() / "Pictures")
 
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]

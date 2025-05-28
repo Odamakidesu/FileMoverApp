@@ -3,6 +3,8 @@ dist/
 build/
 __pycache__/
 *.spec
+distribute/
+*.zip
 
 # 認証系・秘密鍵
 credentials.json

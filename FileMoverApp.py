@@ -12,6 +12,7 @@ import subprocess
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from tkinter import filedialog, messagebox
+from tkinterdnd2 import DND_FILES, TkinterDnD
 from config import (
     load_base_root,
     save_base_root,
@@ -19,7 +20,7 @@ from config import (
     save_keywords,
     TOKEN_PATH,
     CREDENTIAL_PATH,
-    AUTH_COMPLETE_HTML_PATH,
+    # AUTH_COMPLETE_HTML_PATH,
     SCOPES,
     DEFAULT_KEYWORDS,)
 from google.auth.transport.requests import Request
@@ -51,8 +52,8 @@ def get_hit_keywords_events(max_results=250):
                     creds.refresh(Request())
                 else:
                     flow = InstalledAppFlow.from_client_secrets_file(CREDENTIAL_PATH, SCOPES)
-                    html_content = AUTH_COMPLETE_HTML_PATH.read_text(encoding="utf-8")
-                    creds = flow.run_local_server(port=0, timeout_seconds=60, success_html=html_content)
+                    # html_content = AUTH_COMPLETE_HTML_PATH.read_text(encoding="utf-8")
+                    creds = flow.run_local_server(port=0, timeout_seconds=60)
                     
                 with open(TOKEN_PATH, 'wb') as token:
                     pickle.dump(creds, token)
@@ -131,7 +132,7 @@ def extract_and_copy_images(zip_path, target_dir):
 
                     shutil.copy2(full_path, dest_path)
 
-class FileMoverApp(ctk.CTk):
+class FileMoverApp(TkinterDnD.Tk):
     def __init__(self):
         super().__init__()
         # 初期表示時
@@ -187,6 +188,9 @@ class FileMoverApp(ctk.CTk):
 
         self.file_display = ctk.CTkTextbox(self, height=120)
         self.file_display.pack(padx=20, pady=5, fill="both")
+
+        self.file_display.drop_target_register(DND_FILES)
+        self.file_display.dnd_bind('<<Drop>>', self.on_drop)
 
         # ========= 実行 =========
         self.exec_button = ctk.CTkButton(self, text="実行", command=self.execute)
@@ -314,6 +318,13 @@ class FileMoverApp(ctk.CTk):
     # キーワード編集画面展開
     def open_keyword_editor(self):
         KeywordEditor(self)
+    
+    def on_drop(self, event):
+        dropped_files = self.tk.splitlist(event.data)
+        for path in dropped_files:
+            if os.path.exists(path):
+                self.file_paths.append(path)
+                self.file_display.insert(ctk.END, f"{path}\n")
 
     def execute(self):
         if not self.file_paths:
