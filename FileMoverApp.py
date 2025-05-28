@@ -53,13 +53,18 @@ def get_hit_keywords_events(max_results=250):
                 if creds and creds.expired and creds.refresh_token:
                     creds.refresh(Request())
                 else:
-                    decrypt_credentials()
-                    flow = InstalledAppFlow.from_client_secrets_file(CREDENTIAL_JSON_PATH, SCOPES)
+                    config_dict = decrypt_credentials()
+                    flow = InstalledAppFlow.from_client_config(config_dict, SCOPES)
                     # html_content = AUTH_COMPLETE_HTML_PATH.read_text(encoding="utf-8")
                     creds = flow.run_local_server(port=0, timeout_seconds=60)
                     
                 with open(TOKEN_PATH, 'wb') as token:
                     pickle.dump(creds, token)
+                # 生成された復号ファイルを削除
+                try:
+                    os.remove(CREDENTIAL_JSON_PATH)
+                except FileNotFoundError:
+                    pass
             except Exception as e:
                 logging.error("Google認証エラー", exc_info=True)
                 messagebox.showerror("Google認証失敗", f"Google認証中に問題が発生しました。\n操作を中止または権限が不足している可能性があります。\n\n{str(e)}")
@@ -193,7 +198,7 @@ class FileMoverApp(TkinterDnD.Tk):
         self.file_display.pack(padx=20, pady=5, fill="both")
 
         self.file_display.drop_target_register(DND_FILES)
-        self.file_display.dnd_bind('<<Drop>>', self.on_drop)
+        self.after(200, lambda: self.file_display.dnd_bind('<<Drop>>', self.on_drop))
 
         # ========= 実行 =========
         self.exec_button = ctk.CTkButton(self, text="実行", command=self.execute)
