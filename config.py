@@ -16,9 +16,9 @@ def get_resource_path(filename: str) -> Path:
     return RUNTIME_DIR / filename
 
 # 各種パス定数
-TOKEN_PATH = get_resource_path("token.pickle")
+TOKEN_PATH = BASE_DIR / ".filemoverapp" / "token.pickle"
+# TOKEN_PATH = get_resource_path("token.pickle")
 CREDENTIAL_ENC_PATH = get_resource_path("credentials.enc")
-CREDENTIAL_JSON_PATH = get_resource_path("credentials.json")
 # AUTH_COMPLETE_HTML_PATH = get_resource_path("auth_complete.html")
 KEYWORDS_FILE = get_resource_path("config_keywords.json")
 BASE_CONFIG_FILE = get_resource_path("config_local.json")

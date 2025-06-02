@@ -8,7 +8,7 @@ encrypted_credentials/
 *.zip
 
 # 認証系・秘密鍵
-credentials.json
+secret/
 token.pickle
 
 # ローカル設定ファイル

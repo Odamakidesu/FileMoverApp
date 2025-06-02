@@ -10,6 +10,9 @@ import tempfile
 import re
 import subprocess
 import string
+import stat
+import ctypes
+from pathlib import Path
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from tkinter import filedialog, messagebox, Text
@@ -23,11 +26,7 @@ from config import (
     save_event_format,
     TOKEN_PATH,
     SUPPORTED_IMAGE_EXTENSIONS,
-    CREDENTIAL_JSON_PATH,
-    # AUTH_COMPLETE_HTML_PATH,
-    SCOPES,
-    DEFAULT_KEYWORDS,
-    KEYWORDS_FILE,)
+    SCOPES,)
 from google.auth.transport.requests import Request
 from decrypt_utils import decrypt_credentials
 
@@ -60,14 +59,16 @@ def get_hit_keywords_events(max_results=250):
                 else:
                     config_dict = decrypt_credentials()
                     flow = InstalledAppFlow.from_client_config(config_dict, SCOPES)
-                    # html_content = AUTH_COMPLETE_HTML_PATH.read_text(encoding="utf-8")
                     creds = flow.run_local_server(port=0, timeout_seconds=60)
+                    if not os.path.exists(TOKEN_PATH):
+                        TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+                        make_hidden(TOKEN_PATH.parent)
                     
                 with open(TOKEN_PATH, 'wb') as token:
                     pickle.dump(creds, token)
                 # 生成された復号ファイルを削除
                 try:
-                    os.remove(CREDENTIAL_JSON_PATH)
+                    os.chmod(TOKEN_PATH, stat.S_IREAD | stat.S_IWRITE)
                 except FileNotFoundError:
                     pass
             except Exception as e:
@@ -184,10 +185,20 @@ def validate_format(format_str: str) -> bool:
 
     return True
 
+def make_hidden(path: Path):
+    """Windowsで指定フォルダを隠し属性にする"""
+    if os.name == "nt" and path.exists():
+        FILE_ATTRIBUTE_HIDDEN = 0x02
+        try:
+            ctypes.windll.kernel32.SetFileAttributesW(str(path), FILE_ATTRIBUTE_HIDDEN)
+        except Exception as e:
+            print(f"⚠ 隠し属性の付与に失敗しました: {e}")
+
 class FileMoverApp(TkinterDnD.Tk):
     def __init__(self):
         super().__init__()
         # 初期表示時
+        self.attributes("-alpha", 1.0)
         self.base_root = load_base_root()
         self.title("File Mover App")
         self.geometry("400x650")
@@ -445,8 +456,14 @@ class FileMoverApp(TkinterDnD.Tk):
                 if filename.lower().endswith(".zip"):
                     extract_and_copy_images(path, final_dest_dir)
                 else:
-                    # 通常ファイルはコピーだけ
-                    shutil.copy2(path, dest_path)
+                    # 通常ファイルはリネーム付きコピー
+                    base, ext = os.path.splitext(filename)
+                    counter = 1
+                    renamed_path = dest_path
+                    while os.path.exists(renamed_path):
+                        renamed_path = os.path.join(final_dest_dir, f"{base}_{counter}{ext}")
+                        counter += 1
+                    shutil.copy2(path, renamed_path)
             except PermissionError:
                 messagebox.showerror("コピー失敗", f"アクセスが拒否されました：{filename}。\n他のアプリケーションで開いていないか確認してください。")
             except Exception as e:
@@ -475,6 +492,7 @@ class KeywordEditor(ctk.CTkToplevel):
         self.textbox.insert("1.0", ", ".join(load_keywords()))
 
         ctk.CTkButton(self, text="保存", command=self.save).pack(pady=10)
+        self.grab_set()
 
     # キーワードのロードと保存
     def save(self):
@@ -510,6 +528,7 @@ class FormatEditor(ctk.CTkToplevel):
 
         save_button = ctk.CTkButton(self, text="保存", command=self.save_format)
         save_button.pack(pady=10)
+        self.grab_set()
 
     def save_format(self):
         format_str = self.entry.get().strip()
